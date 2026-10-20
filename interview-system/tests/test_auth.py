@@ -1,10 +1,3 @@
-import os
-
-import pytest
-from fastapi.testclient import TestClient
-
-from app.main import app
-
 SUPER = {"X-API-Key": "test-key"}
 
 
@@ -17,8 +10,11 @@ def bearer(c, email, pw):
 def test_agency_seats_and_recruiter_scoping(client):
     ag = client.post("/api/admin/agencies", headers=SUPER, json={"name": "Acme Staffing", "max_recruiters": 1}).json()
     assert client.post("/api/admin/agencies", headers=SUPER, json={"name": "Acme Staffing"}).status_code == 409
-    mk = lambda e: client.post("/api/admin/recruiters", headers=SUPER,
-                               json={"agency_id": ag["id"], "name": "R", "email": e, "password": "password123"})
+
+    def mk(e):
+        return client.post("/api/admin/recruiters", headers=SUPER,
+                           json={"agency_id": ag["id"], "name": "R", "email": e, "password": "password123"})
+
     assert mk("r1@acme.com").status_code == 200
     assert mk("r2@acme.com").status_code == 409  # seat limit
     other = client.post("/api/admin/agencies", headers=SUPER, json={"name": "Beta HR"}).json()

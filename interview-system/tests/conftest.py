@@ -5,8 +5,8 @@ os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ["ADMIN_API_KEY"] = "test-key"
 
 
-import pytest
-from fastapi.testclient import TestClient
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
 
 @pytest.fixture(scope="session")

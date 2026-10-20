@@ -73,7 +73,8 @@ def transcript(interview_id: int, db: Session = Depends(get_db), user: Principal
     iv = owned_interview(db, interview_id, user)
     out = [f"Interview #{iv.id} - {iv.candidate.name} ({iv.candidate.email}) - {iv.role}", ""]
     for r in iv.responses:
-        out += [f"Q{r.order_no}: {r.question_text}", f"A: {r.answer_text}", f"Score {r.overall_score:.1f} - {r.feedback}", ""]
+        out += [f"Q{r.order_no}: {r.question_text}", f"A: {r.answer_text}",
+                f"Score {r.overall_score:.1f} - {r.feedback}", ""]
     if iv.result:
         out += [f"Overall {iv.result.overall_score:.1f} - {iv.result.recommendation}"]
     return "\n".join(out)
