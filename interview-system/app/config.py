@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     admin_api_key: Optional[str] = None
     default_num_questions: int = 5
     answer_timeout_seconds: int = 900
+    runner_mode: str = "socket"  # socket (isolated runner container) | local (tests/dev only)
+    runner_socket: str = "/run/runner/sock"
+    code_timeout_seconds: float = 5.0
 
     @property
     def sqlalchemy_url(self) -> str:

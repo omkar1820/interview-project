@@ -10,7 +10,8 @@ from ..auth import Principal, current_user
 from ..config import get_settings
 from ..database import get_db
 from ..models import Agency, Candidate, Interview, Recruiter
-from ..schemas import (DecisionIn, InterviewCreate, InterviewCreated, InterviewPublic, InterviewSummary,
+from ..services import problems
+from ..schemas import (CodingOut, DecisionIn, InterviewCreate, InterviewCreated, InterviewPublic, InterviewSummary,
                        ReportOut)
 
 router = APIRouter()
@@ -36,7 +37,8 @@ def create_interview(body: InterviewCreate, request: Request, db: Session = Depe
         cand.name = body.name
     iv = Interview(candidate_id=cand.id, role=body.role,
                    num_questions=body.num_questions or get_settings().default_num_questions,
-                   recruiter_id=user.recruiter_id, agency_id=user.agency_id)
+                   recruiter_id=user.recruiter_id, agency_id=user.agency_id,
+                   coding_difficulty=body.coding_difficulty)
     db.add(iv)
     db.commit()
     base = str(request.base_url).rstrip("/")
@@ -64,8 +66,13 @@ def list_interviews(db: Session = Depends(get_db), user: Principal = Depends(cur
 @router.get("/interviews/{interview_id}/report", response_model=ReportOut)
 def report(interview_id: int, db: Session = Depends(get_db), user: Principal = Depends(current_user)):
     iv = owned_interview(db, interview_id, user)
+    c, coding = iv.coding, None
+    if c:
+        prob = problems.get(c.problem_id) or {"title": c.problem_id, "difficulty": iv.coding_difficulty or ""}
+        coding = CodingOut(problem_title=prob["title"], difficulty=prob["difficulty"], language=c.language,
+                           passed=c.passed, total=c.total, feedback=c.feedback, code=c.code)
     return ReportOut(interview_id=iv.id, candidate_name=iv.candidate.name, email=iv.candidate.email,
-                     role=iv.role, status=iv.status, responses=iv.responses, result=iv.result)
+                     role=iv.role, status=iv.status, responses=iv.responses, result=iv.result, coding=coding)
 
 
 @router.get("/interviews/{interview_id}/transcript", response_class=PlainTextResponse)
@@ -97,4 +104,5 @@ def public_info(interview_id: int, token: str = Query(...), db: Session = Depend
     if not iv or not secrets.compare_digest(token, iv.access_token):
         raise HTTPException(404, "Interview not found")
     return InterviewPublic(candidate_name=iv.candidate.name, role=iv.role, status=iv.status,
-                           num_questions=iv.num_questions, answered=len(iv.responses))
+                           num_questions=iv.num_questions, answered=len(iv.responses),
+                           coding_enabled=bool(iv.coding_difficulty), coding_done=iv.coding is not None)

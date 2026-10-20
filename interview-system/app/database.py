@@ -63,14 +63,18 @@ def init_db(retries: int = 10, delay: float = 3.0) -> None:
             time.sleep(delay)
 
 
+NEW_INTERVIEW_COLUMNS = {"recruiter_id": "INTEGER", "agency_id": "INTEGER", "coding_difficulty": "VARCHAR(10)"}
+
+
 def _migrate() -> None:
     """Idempotent, additive-only: new tables come from create_all; add new columns to existing tables."""
     cols = {c["name"] for c in inspect(engine).get_columns("interviews")}
     with engine.begin() as conn:
-        for col in ("recruiter_id", "agency_id"):
+        for col, typ in NEW_INTERVIEW_COLUMNS.items():
             if col not in cols:
-                conn.execute(text(f"ALTER TABLE interviews ADD COLUMN {col} INTEGER NULL"))
-                conn.execute(text(f"CREATE INDEX ix_interviews_{col} ON interviews ({col})"))
+                conn.execute(text(f"ALTER TABLE interviews ADD COLUMN {col} {typ} NULL"))
+                if col.endswith("_id"):
+                    conn.execute(text(f"CREATE INDEX ix_interviews_{col} ON interviews ({col})"))
                 log.info("Migrated: interviews.%s added", col)
 
 

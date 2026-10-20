@@ -9,6 +9,7 @@ class InterviewCreate(BaseModel):
     email: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$", max_length=190)
     role: str = Field(min_length=2, max_length=120)
     num_questions: Optional[int] = Field(default=None, ge=1, le=15)
+    coding_difficulty: Optional[str] = Field(default=None, pattern="^(easy|medium|hard)$")
 
 
 class InterviewCreated(BaseModel):
@@ -23,6 +24,8 @@ class InterviewPublic(BaseModel):
     status: str
     num_questions: int
     answered: int
+    coding_enabled: bool = False
+    coding_done: bool = False
 
 
 class InterviewSummary(BaseModel):
@@ -66,6 +69,16 @@ class ResultOut(BaseModel):
     recruiter_notes: Optional[str] = None
 
 
+class CodingOut(BaseModel):
+    problem_title: str
+    difficulty: str
+    language: str
+    passed: int
+    total: int
+    feedback: str
+    code: str
+
+
 class ReportOut(BaseModel):
     interview_id: int
     candidate_name: str
@@ -74,6 +87,7 @@ class ReportOut(BaseModel):
     status: str
     responses: List[ResponseOut]
     result: Optional[ResultOut] = None
+    coding: Optional[CodingOut] = None
     disclaimer: str = "AI provides decision support; final hiring decisions remain with human recruiters."
 
 

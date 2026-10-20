@@ -22,9 +22,20 @@ APP_JSON=$(aws secretsmanager get-secret-value --region "$REGION" --secret-id "$
   echo "LLM_MODE=auto"
 } > "$ENV_FILE"
 
+# --- Sandbox runner: executes candidate code. No network, no secrets, read-only fs, no capabilities ---
+RUNNER=interview-runner
+SOCK_DIR=/opt/runner-sock
+mkdir -p "$SOCK_DIR" && chmod 777 "$SOCK_DIR"
+docker rm -f "$RUNNER" >/dev/null 2>&1 || true
+docker run -d --name "$RUNNER" --restart unless-stopped --network none --read-only \
+  --tmpfs /tmp:rw,nosuid,size=64m --cap-drop ALL --security-opt no-new-privileges \
+  --pids-limit 128 --memory 512m --memory-swap 512m --cpus 1 --user 1002:1002 \
+  -v "$SOCK_DIR":/run/runner -e RUNNER_SOCKET=/run/runner/sock \
+  "$IMAGE" python -m app.runner
+
 PREV_IMAGE=$(docker inspect -f '{{.Config.Image}}' "$NAME" 2>/dev/null || true)
 docker rm -f "$NAME" >/dev/null 2>&1 || true
-docker run -d --name "$NAME" --restart unless-stopped -p 80:8000 --env-file "$ENV_FILE" "$IMAGE"
+docker run -d --name "$NAME" --restart unless-stopped -p 80:8000 -v "$SOCK_DIR":/run/runner --env-file "$ENV_FILE" "$IMAGE"
 
 for i in $(seq 1 30); do
   if curl -fs http://localhost:80/health >/dev/null; then echo "Deployed $IMAGE - healthy"; exit 0; fi
@@ -35,7 +46,7 @@ echo "Health check failed - rolling back" >&2
 docker logs --tail 50 "$NAME" >&2 || true
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 if [ -n "$PREV_IMAGE" ]; then
-  docker run -d --name "$NAME" --restart unless-stopped -p 80:8000 --env-file "$ENV_FILE" "$PREV_IMAGE"
+  docker run -d --name "$NAME" --restart unless-stopped -p 80:8000 -v "$SOCK_DIR":/run/runner --env-file "$ENV_FILE" "$PREV_IMAGE"
   echo "Rolled back to $PREV_IMAGE" >&2
 fi
 exit 1

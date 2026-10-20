@@ -57,6 +57,7 @@ class Interview(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|in_progress|completed
     recruiter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recruiters.id"), nullable=True, index=True)
     agency_id: Mapped[Optional[int]] = mapped_column(ForeignKey("agencies.id"), nullable=True, index=True)
+    coding_difficulty: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # easy|medium|hard
     access_token: Mapped[str] = mapped_column(String(64), default=lambda: secrets.token_urlsafe(18))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -66,9 +67,28 @@ class Interview(Base):
     responses: Mapped[List["Response"]] = relationship(
         back_populates="interview", order_by="Response.order_no", cascade="all, delete-orphan"
     )
+    coding: Mapped[Optional["CodingSubmission"]] = relationship(
+        back_populates="interview", uselist=False, cascade="all, delete-orphan"
+    )
     result: Mapped[Optional["FinalResult"]] = relationship(
         back_populates="interview", uselist=False, cascade="all, delete-orphan"
     )
+
+
+class CodingSubmission(Base):
+    __tablename__ = "coding_submissions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    interview_id: Mapped[int] = mapped_column(ForeignKey("interviews.id"), unique=True)
+    problem_id: Mapped[str] = mapped_column(String(60))
+    language: Mapped[str] = mapped_column(String(20))
+    code: Mapped[str] = mapped_column(Text)
+    passed: Mapped[int] = mapped_column(Integer, default=0)
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    feedback: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    interview: Mapped["Interview"] = relationship(back_populates="coding")
 
 
 class Response(Base):
