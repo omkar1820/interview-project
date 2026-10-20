@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Recruiter dashboard</title>
+<style>
+:root{--ink:#0b1f3a;--rose:#c46f8f;--lilac:#b9a6ff;--paper:#f3f2f7;--mut:#6b7285;--line:#e3e1ec}
+*{box-sizing:border-box;margin:0}
+body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;background:var(--paper);color:var(--ink);line-height:1.45}
+button,input,select,textarea{font:inherit;color:inherit}
+.hero{min-height:72vh;padding:28px 6vw 0;color:#fff;overflow:hidden;background:linear-gradient(120deg,#0b1f3a,#3b2a5c 45%,#7a4a78 75%,#c46f8f);background-size:220% 220%;animation:drift 18s ease-in-out infinite alternate}
+@keyframes drift{to{background-position:100% 50%}}
+.hero nav{display:flex;justify-content:space-between;font-weight:600}
+.hero nav a{color:#fff;text-decoration:none;opacity:.85}
+h1{font-weight:300;font-size:clamp(38px,8vw,108px);line-height:.98;letter-spacing:-.045em;text-align:center;margin:8vh auto 0;max-width:15ch}
+h1 span{display:inline-block;opacity:0;transform:translateY(60px);animation:rise .9s cubic-bezier(.2,.8,.2,1) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
+.fan{display:flex;justify-content:center;gap:22px;margin-top:6vh;perspective:1100px}
+.fc{width:min(300px,28vw);min-height:150px;padding:22px;border-radius:18px;background:#f5ecef;transform:translateY(120px) rotateX(14deg);opacity:0;animation:up 1.1s .8s cubic-bezier(.2,.8,.2,1) forwards;box-shadow:0 30px 60px rgba(0,0,0,.3)}
+.fc:nth-child(2){animation-delay:1s;background:#fff}.fc:nth-child(3){animation-delay:1.2s;background:#1c1630;color:#fff}
+@keyframes up{to{opacity:1;transform:none}}
+.fc b{font-size:clamp(32px,5vw,60px);font-weight:300;letter-spacing:-.04em;display:block}
+.tilt{transition:transform .15s ease-out,box-shadow .2s}
+.app{max-width:1180px;margin:0 auto;padding:30px 5vw 80px}
+.card{background:#fff;border-radius:16px;padding:22px;border:1px solid var(--line);margin-bottom:18px}
+.grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.stat b{font-size:40px;font-weight:300;letter-spacing:-.04em;display:block}.stat span{color:var(--mut)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:8px 0 24px}
+.tabs button{border:0;background:none;padding:12px 18px;cursor:pointer;color:var(--mut);font-size:16px;border-bottom:3px solid transparent}
+.tabs button.on{color:var(--ink);border-color:var(--rose);font-weight:600}
+h2{font-size:24px;font-weight:500;letter-spacing:-.02em;margin-bottom:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+input,select,textarea{padding:11px 13px;border-radius:10px;border:1px solid var(--line);background:#fff;min-width:150px;flex:1}
+.btn{border:0;border-radius:10px;padding:11px 20px;background:var(--ink);color:#fff;cursor:pointer;font-weight:600;flex:0 0 auto}
+.btn.ghost{background:#ece9f6;color:var(--ink)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--lilac);outline-offset:2px}
+.tbl{overflow-x:auto}table{width:100%;border-collapse:collapse}
+th{text-align:left;color:var(--mut);font-weight:500;font-size:14px;padding:10px 8px;border-bottom:1px solid var(--line)}
+td{padding:12px 8px;border-bottom:1px solid var(--line)}
+.pill{padding:4px 12px;border-radius:99px;font-size:13px;font-weight:600;white-space:nowrap}
+.completed{background:#d8f6ec;color:#0f6b50}.pending{background:#ece9f6;color:#4d3d8a}.in_progress{background:#ffe9d6;color:#9a4a12}
+.bar{display:grid;grid-template-columns:110px 1fr 36px;gap:12px;align-items:center;margin-bottom:12px}
+.bar i{display:block;height:14px;border-radius:9px;background:linear-gradient(90deg,#3b2a5c,var(--rose));width:0;transition:width 1.1s cubic-bezier(.2,.8,.2,1)}
+.qa{border-top:1px solid var(--line);padding:14px 0}.qa p{margin:4px 0}.mut{color:var(--mut)}
+.empty{padding:24px;text-align:center;color:var(--mut)}code{word-break:break-all}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,90px);background:var(--ink);color:#fff;padding:12px 20px;border-radius:12px;transition:transform .35s;z-index:9}.toast.on{transform:translate(-50%,0)}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01s!important;animation-delay:0s!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="hero">
+  <nav><span>Interview Hub</span><span id="who"></span></nav>
+  <h1 id="h1"></h1>
+  <div class="fan" id="fan"></div>
+</header>
+<main class="app">
+  <div class="tabs" id="tabs"></div>
+  <section id="view"></section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let tok='',me=null,rows=[],ags=[],recs=[],tab='overview',flt='all',q='',lastLink='',mode='rec';
+try{tok=sessionStorage.getItem('t')||''}catch(e){}
+const sup=()=>me&&me.role==='super_admin';
+const sc=v=>v==null?'-':Math.round(v*10)/10,nm=s=>String(s||'').replace('_',' ');
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),2600)}
+async function api(p,o){o=o||{};const h={'Content-Type':'application/json'};if(tok)h.Authorization='Bearer '+tok;const r=await fetch(p,Object.assign({},o,{headers:h}));if(r.status===401&&tok){out();toast('Session ended - sign in again');throw 0}if(!r.ok){let m='Request failed ('+r.status+')';try{m=(await r.json()).detail||m}catch(e){}toast(typeof m==='string'?m:'Please check the form values');throw 0}return r}
+function out(){tok='';me=null;try{sessionStorage.removeItem('t')}catch(e){}$('#who').innerHTML='';draw()}
+async function login(){const b=mode==='key'?{api_key:$('#lk').value.trim()}:{email:$('#le').value.trim(),password:$('#lp').value};try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}),d=await r.json();if(!r.ok)return toast(typeof d.detail==='string'?d.detail:'Sign in failed');tok=d.token;try{sessionStorage.setItem('t',tok)}catch(e){}await boot()}catch(e){toast('Sign in failed')}}
+async function boot(){try{me=await(await api('/api/auth/me')).json()}catch(e){return}tab='overview';$('#who').innerHTML=esc(me.name)+(me.agency?' &middot; '+esc(me.agency):'')+' &nbsp; <a href="#" onclick="out();return false">Sign out</a>';await load()}
+async function load(){try{rows=await(await api('/api/interviews')).json();if(sup()){ags=await(await api('/api/admin/agencies')).json();recs=await(await api('/api/admin/recruiters')).json()}hero();draw()}catch(e){}}
+const done=()=>rows.filter(x=>x.status==='completed'),scored=()=>rows.filter(x=>x.overall_score!=null);
+const avg=()=>{const d=scored();return d.length?sc(d.reduce((s,x)=>s+x.overall_score,0)/d.length):0};
+function count(){document.querySelectorAll('[data-n]').forEach(el=>{const n=+el.dataset.n,t0=performance.now();(function f(t){const p=Math.min((t-t0)/900,1);el.textContent=Math.round(n*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(f)})(t0)})}
+function bars(){requestAnimationFrame(()=>requestAnimationFrame(()=>document.querySelectorAll('.bar i').forEach(i=>i.style.width=i.dataset.w+'%')))}
+function hero(){
+ if(!hero.d){hero.d=1;$('#h1').innerHTML='Every interview, scored and ready to review.'.split(' ').map((w,i)=>`<span style="animation-delay:${i*.09}s">${w}</span>`).join(' ')}
+ const c=[[rows.length,'Interviews created'],[done().length,'Completed'],[rows.length-done().length,'Waiting for candidates']];
+ $('#fan').innerHTML=c.map(x=>`<div class="fc tilt"><b data-n="${x[0]}">0</b><small>${x[1]}</small></div>`).join('');count()}
+function draw(){
+ const T=sup()?[['overview','Overview'],['interviews','Interviews'],['agencies','Agencies'],['recruiters','Recruiters']]:[['overview','Overview'],['interviews','Interviews']];
+ $('#tabs').innerHTML=me?T.map(t=>`<button class="${tab===t[0]?'on':''}" onclick="tab='${t[0]}';draw()">${t[1]}</button>`).join(''):'';
+ $('#view').innerHTML=!me?loginV():tab==='overview'?overview():tab==='interviews'?interviews():tab==='agencies'?agenciesV():recsV();
+ count();bars();if(me&&tab==='interviews')body()}
+function loginV(){return `<div class="card" style="max-width:460px;margin:0 auto"><h2>Sign in</h2>${mode==='key'?'<div class="row"><input id="lk" type="password" placeholder="Super admin API key" autocomplete="off"></div>':'<div class="row"><input id="le" type="email" placeholder="Email" autocomplete="username"></div><div class="row"><input id="lp" type="password" placeholder="Password" autocomplete="current-password"></div>'}<div class="row" style="margin:0"><button class="btn" onclick="login()">Sign in</button><button class="btn ghost" onclick="mode=mode==='key'?'rec':'key';draw()">${mode==='key'?'Recruiter sign in':'Super admin key'}</button></div></div>`}
+function agenciesV(){return `<h2>Agencies</h2><div class="card"><div class="row" style="margin:0"><input id="an" placeholder="Agency name"><input id="as" type="number" min="1" max="500" value="5" style="max-width:130px" title="Recruiter seats"><button class="btn" onclick="addAg()">Add agency</button></div></div><div class="card tbl"><table><thead><tr><th>Agency</th><th>Seats used</th><th>Interviews</th><th>Status</th><th></th></tr></thead><tbody>${ags.length?ags.map(a=>`<tr><td>${esc(a.name)}</td><td>${a.active_recruiters} / ${a.max_recruiters}</td><td>${a.interviews}</td><td><span class="pill ${a.active?'completed':'pending'}">${a.active?'active':'disabled'}</span></td><td><button class="btn ghost" onclick="seats(${a.id},${a.max_recruiters})">Seats</button> <button class="btn ghost" onclick="pa(${a.id},{active:${!a.active}})">${a.active?'Disable':'Enable'}</button></td></tr>`).join(''):'<tr><td colspan="5" class="empty">No agencies yet. Add the first one above.</td></tr>'}</tbody></table></div>`}
+function recsV(){return `<h2>Recruiters</h2><div class="card"><div class="row" style="margin:0"><select id="ra">${ags.filter(a=>a.active).map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select><input id="rn" placeholder="Name"><input id="re" type="email" placeholder="Login email"><input id="rp" placeholder="Temporary password (8+ chars)"><button class="btn" onclick="addRec()">Add recruiter</button></div></div><div class="card tbl"><table><thead><tr><th>Recruiter</th><th>Agency</th><th>Interviews</th><th>Status</th><th></th></tr></thead><tbody>${recs.length?recs.map(r=>`<tr><td>${esc(r.name)}<br><small class="mut">${esc(r.email)}</small></td><td>${esc(r.agency)}</td><td>${r.interviews}</td><td><span class="pill ${r.active?'completed':'pending'}">${r.active?'active':'disabled'}</span></td><td><button class="btn ghost" onclick="pw(${r.id})">Reset password</button> <button class="btn ghost" onclick="pr(${r.id},{active:${!r.active}})">${r.active?'Disable':'Enable'}</button></td></tr>`).join(''):'<tr><td colspan="5" class="empty">No recruiters yet. Add an agency first, then its recruiters.</td></tr>'}</tbody></table></div>`}
+async function addAg(){const name=$('#an').value.trim();if(!name)return toast('Enter an agency name');try{await api('/api/admin/agencies',{method:'POST',body:JSON.stringify({name,max_recruiters:+$('#as').value||5})});toast('Agency added');await load()}catch(e){}}
+async function pa(id,b){try{await api('/api/admin/agencies/'+id,{method:'PATCH',body:JSON.stringify(b)});await load()}catch(e){}}
+function seats(id,n){const v=+prompt('Recruiter seats for this agency',n);if(v>0)pa(id,{max_recruiters:v})}
+async function addRec(){const b={agency_id:+$('#ra').value,name:$('#rn').value.trim(),email:$('#re').value.trim(),password:$('#rp').value};if(!b.agency_id||!b.name||!b.email||b.password.length<8)return toast('Fill every field (password 8+ characters)');try{await api('/api/admin/recruiters',{method:'POST',body:JSON.stringify(b)});toast('Recruiter added');await load()}catch(e){}}
+async function pr(id,b){try{await api('/api/admin/recruiters/'+id,{method:'PATCH',body:JSON.stringify(b)});toast('Saved');await load()}catch(e){}}
+function pw(id){const v=prompt('New password (8+ characters)');if(!v)return;if(v.length<8)return toast('Password too short');pr(id,{password:v})}
+function overview(){
+ const st=['completed','in_progress','pending'],mx=Math.max(1,...st.map(s=>rows.filter(x=>x.status===s).length)),top=[...scored()].sort((a,b)=>b.overall_score-a.overall_score).slice(0,3);
+ return `<div class="grid"><div class="card stat tilt"><b data-n="${rows.length}">0</b><span>Interviews</span></div><div class="card stat tilt"><b data-n="${done().length}">0</b><span>Completed</span></div><div class="card stat tilt"><b>${avg()}</b><span>Average score</span></div><div class="card stat tilt"><b data-n="${rows.filter(x=>x.recruiter_decision==='advance').length}">0</b><span>Advanced</span></div></div>
+ <div class="grid"><div class="card"><h2>Interviews by status</h2>${st.map(s=>{const n=rows.filter(x=>x.status===s).length;return `<div class="bar"><span>${nm(s)}</span><i data-w="${n/mx*100}"></i><b>${n}</b></div>`}).join('')}</div>
+ <div class="card"><h2>Top candidates</h2>${top.length?top.map(x=>`<div class="bar" style="grid-template-columns:1fr auto"><span>${esc(x.candidate_name)}<br><small class="mut">${esc(x.role)}</small></span><b>${sc(x.overall_score)}</b></div>`).join(''):'<div class="empty">Scores appear here after the first completed interview.</div>'}</div></div>`}
+function interviews(){
+ return `<h2>Interviews</h2><div class="card"><div class="row" style="margin:0"><input id="cn" placeholder="Candidate name"><input id="ce" type="email" placeholder="Candidate email"><input id="cr" placeholder="Role" value="Data Analyst"><input id="cq" type="number" min="1" max="15" value="5" style="max-width:110px"><button class="btn" onclick="addIv()">Create interview link</button></div>
+ ${lastLink?`<p style="margin-top:14px">Send this link to the candidate:<br><code>${esc(lastLink)}</code> <button class="btn ghost" onclick="copyL()">Copy link</button></p>`:''}</div>
+ <div class="row"><input id="sq" placeholder="Search candidate, email or role" value="${esc(q)}" oninput="q=this.value;body()"><select onchange="flt=this.value;body()">${['all','pending','in_progress','completed'].map(s=>`<option value="${s}" ${flt===s?'selected':''}>${nm(s)}</option>`).join('')}</select></div>
+ <div class="card tbl"><table><thead><tr><th>Candidate</th>${sup()?'<th>Recruiter</th>':''}<th>Role</th><th>Status</th><th>Score</th><th>Recommendation</th><th>Decision</th><th></th></tr></thead><tbody id="tb"></tbody></table></div><div id="rep"></div>`}
+function body(){const t=$('#tb');if(!t)return;const l=rows.filter(x=>(flt==='all'||x.status===flt)&&(x.candidate_name+x.email+x.role).toLowerCase().includes(q.toLowerCase()));
+ t.innerHTML=l.length?l.map(x=>`<tr><td>${esc(x.candidate_name)}<br><small class="mut">${esc(x.email)}</small></td>${sup()?`<td>${esc(x.recruiter_name||'-')}<br><small class="mut">${esc(x.agency_name||'')}</small></td>`:''}<td>${esc(x.role)}</td><td><span class="pill ${esc(x.status)}">${nm(esc(x.status))}</span></td><td>${sc(x.overall_score)}</td><td>${esc(x.recommendation||'-')}</td><td>${esc(x.recruiter_decision||'-')}</td><td><button class="btn ghost" onclick="openRep(${+x.interview_id})">View</button></td></tr>`).join(''):'<tr><td colspan="8" class="empty">No interviews match. Create one above.</td></tr>'}
+async function addIv(){const name=$('#cn').value.trim(),email=$('#ce').value.trim(),role=$('#cr').value.trim();if(!name||!email||!role)return toast('Enter name, email and role');
+ try{const d=await(await api('/api/interviews',{method:'POST',body:JSON.stringify({name,email,role,num_questions:+$('#cq').value||5})})).json();lastLink=`${location.origin}/interview?id=${d.interview_id}&token=${encodeURIComponent(d.access_token)}`;toast('Interview link created');await load()}catch(e){}}
+function copyL(){try{navigator.clipboard.writeText(lastLink).then(()=>toast('Link copied'),()=>toast('Select the link and copy it'))}catch(e){toast('Select the link and copy it')}}
+async function openRep(id){try{const r=await(await api(`/api/interviews/${id}/report`)).json(),s=r.result;
+ $('#rep').innerHTML=`<div class="card"><h2>${esc(r.candidate_name)} &middot; ${esc(r.role)}</h2>
+ ${s?`<div class="grid"><div class="stat"><b>${sc(s.overall_score)}</b><span>Overall</span></div><div class="stat"><b>${sc(s.technical_score)}</b><span>Technical</span></div><div class="stat"><b>${sc(s.relevance_score)}</b><span>Relevance</span></div><div class="stat"><b>${sc(s.problem_solving_score)}</b><span>Problem solving</span></div><div class="stat"><b>${sc(s.communication_score)}</b><span>Communication</span></div></div>
+ <p style="margin-top:14px"><b>Recommendation:</b> ${esc(s.recommendation)}</p><p><b>Strengths:</b> ${esc(s.strengths)}</p><p><b>To improve:</b> ${esc(s.improvements)}</p>`:'<p class="mut">No final result yet. The interview is '+nm(esc(r.status))+'.</p>'}
+ ${r.responses.map(x=>`<div class="qa"><p><b>Q${x.order_no}.</b> ${esc(x.question_text)}</p><p>${esc(x.answer_text)}</p><p class="mut">Score ${sc(x.overall_score)} &middot; ${esc(x.feedback)}</p></div>`).join('')}
+ ${s?`<div class="row" style="margin-top:14px"><select id="dc">${['advance','hold','reject'].map(d=>`<option ${s.recruiter_decision===d?'selected':''}>${d}</option>`).join('')}</select><input id="dn" placeholder="Notes" value="${esc(s.recruiter_notes||'')}"><button class="btn" onclick="decide(${id})">Save decision</button></div>`:''}
+ <button class="btn ghost" onclick="tr(${id})">Download transcript</button></div>`;$('#rep').scrollIntoView({behavior:'smooth'})}catch(e){}}
+async function decide(id){try{await api(`/api/interviews/${id}/decision`,{method:'PATCH',body:JSON.stringify({decision:$('#dc').value,notes:$('#dn').value||null})});toast('Decision saved');await load();openRep(id)}catch(e){}}
+async function tr(id){try{const t=await(await api(`/api/interviews/${id}/transcript`)).text(),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/plain'}));a.download=`interview-${id}-transcript.txt`;a.click()}catch(e){}}
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&['le','lp','lk'].includes(e.target.id))login()});
+document.addEventListener('mousemove',e=>{const t=e.target.closest&&e.target.closest('.tilt');if(!t)return;const r=t.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;t.style.animation='none';t.style.opacity=1;t.style.transform=`perspective(700px) rotateX(${(-y*12).toFixed(1)}deg) rotateY(${(x*14).toFixed(1)}deg) translateY(-4px)`;t.style.boxShadow='0 24px 40px rgba(11,31,58,.22)'});
+document.addEventListener('mouseout',e=>{const t=e.target.closest&&e.target.closest('.tilt');if(t&&!t.contains(e.relatedTarget)){t.style.transform='';t.style.boxShadow=''}});
+hero();draw();if(tok)boot();
+</script>
+</body>
+</html>
