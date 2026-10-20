@@ -1,0 +1,15 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Interview System</title><link rel="stylesheet" href="/static/style.css"></head><body>
+<header><h1>Automated Candidate Interview &amp; Evaluation System</h1><a href="/dashboard">Recruiter dashboard</a></header>
+<main><div class="card"><h2>Create interview (recruiter)</h2>
+<label>Recruiter API key (if configured)</label><input id="key" type="password" placeholder="X-API-Key">
+<label>Candidate name</label><input id="name"><label>Candidate email</label><input id="email" type="email">
+<label>Role</label><input id="role" value="Data Analyst"><label>Number of questions</label><input id="n" type="number" min="1" max="15" value="5">
+<button id="go">Create interview link</button><p id="out" class="mut"></p></div></main>
+<script>
+const $=id=>document.getElementById(id);$("key").value=sessionStorage.getItem("key")||"";
+$("go").onclick=async()=>{sessionStorage.setItem("key",$("key").value);
+const r=await fetch("/api/interviews",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":$("key").value},
+body:JSON.stringify({name:$("name").value,email:$("email").value,role:$("role").value,num_questions:+$("n").value})});
+const d=await r.json();$("out").innerHTML=r.ok?`Send this link to the candidate:<br><a href="${d.candidate_url}">${d.candidate_url}</a>`:"Error: "+JSON.stringify(d.detail||d);};
+</script></body></html>

@@ -1,0 +1,22 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard</title><link rel="stylesheet" href="/static/style.css"></head><body>
+<header><h1>Recruiter Dashboard</h1><a href="/">Create interview</a></header>
+<main><div class="card"><label>API key</label><input id="key" type="password"><button id="load">Load interviews</button></div>
+<div class="card"><table><thead><tr><th>#</th><th>Candidate</th><th>Role</th><th>Status</th><th>Score</th><th>Recommendation</th><th>Decision</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div id="detail"></div></main>
+<script>
+const $=id=>document.getElementById(id),pct=x=>Math.round(x*100)+"%";$("key").value=sessionStorage.getItem("key")||"";
+const H=()=>({"X-API-Key":$("key").value}),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function load(){sessionStorage.setItem("key",$("key").value);const r=await fetch("/api/interviews",{headers:H()});if(!r.ok){alert("Unauthorized");return}
+$("rows").innerHTML=(await r.json()).map(i=>`<tr class="click" onclick="show(${i.interview_id})"><td>${i.interview_id}</td><td>${esc(i.candidate_name)}</td><td>${esc(i.role)}</td><td>${i.status}</td><td>${i.overall_score==null?"-":pct(i.overall_score)}</td><td>${esc(i.recommendation||"-")}</td><td>${esc(i.recruiter_decision||"-")}</td></tr>`).join("")}
+const bar=(l,v)=>`<div><b>${l}</b> ${pct(v)}<div class="bar"><i style="width:${pct(v)}"></i></div></div>`;
+async function show(id){const d=await (await fetch(`/api/interviews/${id}/report`,{headers:H()})).json(),r=d.result;
+$("detail").innerHTML=`<div class="card"><h2>${esc(d.candidate_name)} — ${esc(d.role)}</h2>`+(r?`<div class="score">${pct(r.overall_score)}</div>
+<div class="grid">${bar("Technical",r.technical_score)}${bar("Relevance",r.relevance_score)}${bar("Problem solving",r.problem_solving_score)}${bar("Communication",r.communication_score)}</div>
+<p><b>Strengths:</b> ${esc(r.strengths)}<br><b>Areas to improve:</b> ${esc(r.improvements)}</p><p class="pill">${esc(r.recommendation)}</p>
+<p><button onclick="dec(${id},'advance')">Advance</button> <button class="sec" onclick="dec(${id},'hold')">Hold</button> <button class="sec" onclick="dec(${id},'reject')">Reject</button></p>`:`<p class="mut">Interview ${d.status}; no final result yet.</p>`)+
+d.responses.map(x=>`<hr><p><b>Q${x.order_no}.</b> ${esc(x.question_text)}</p><p>${esc(x.answer_text)}</p><p class="mut">Score ${pct(x.overall_score)} · ${esc(x.feedback)}</p>`).join("")+
+`<p class="mut">${esc(d.disclaimer)}</p></div>`;scrollTo(0,document.body.scrollHeight)}
+async function dec(id,decision){await fetch(`/api/interviews/${id}/decision`,{method:"PATCH",headers:{...H(),"Content-Type":"application/json"},body:JSON.stringify({decision})});load();show(id)}
+$("load").onclick=load;if($("key").value)load();
+</script></body></html>

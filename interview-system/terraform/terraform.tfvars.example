@@ -1,0 +1,7 @@
+region           = "ap-south-1"
+vpc_id           = "vpc-0123456789abcdef0"
+public_subnet_id = "subnet-aaaa1111"
+db_subnet_ids    = ["subnet-bbbb2222", "subnet-cccc3333"]
+key_name         = "my-keypair"
+ssh_cidr         = "203.0.113.10/32"   # Jenkins server IP
+openai_api_key   = "sk-..."

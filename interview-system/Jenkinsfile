@@ -1,0 +1,122 @@
+// Declarative pipeline: test -> build -> scan -> push to ECR -> deploy to EC2 (talks to RDS MySQL)
+// Jenkins prerequisites: Docker, AWS CLI, ssh on the agent; plugins: Pipeline, Credentials Binding,
+// AWS Credentials, SSH Agent, Timestamper.
+// Credentials to create in Jenkins:
+//   aws-jenkins          (AWS Credentials: access key for a user allowed to push to ECR)
+//   aws-account-id       (Secret text: 12-digit account id)
+//   ec2-deploy-key       (SSH private key for ec2-user)
+//   deploy-host-staging / deploy-host-production  (Secret text: EC2 public IP or DNS)
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    timeout(time: 40, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  parameters {
+    choice(name: 'ENVIRONMENT', choices: ['staging', 'production'], description: 'Deploy target')
+    booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Deploy after a successful build')
+    booleanParam(name: 'FAIL_ON_VULNS', defaultValue: false, description: 'Fail if HIGH/CRITICAL vulnerabilities found')
+  }
+
+  environment {
+    AWS_REGION     = 'ap-south-1'
+    ECR_REPO       = 'interview-eval-system'
+    DB_SECRET_ID   = 'interview-eval/db'
+    APP_SECRET_ID  = 'interview-eval/app'
+    DOCKER_BUILDKIT = '1'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        script {
+          env.SHORT_SHA = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+          env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.SHORT_SHA}"
+        }
+      }
+    }
+
+    stage('Lint & Test') {
+      steps {
+        // The Dockerfile "test" stage runs flake8 + pytest; a failure fails the build
+        sh 'docker build --target test -t interview-eval-test:${IMAGE_TAG} .'
+      }
+    }
+
+    stage('Build Image') {
+      steps {
+        withCredentials([string(credentialsId: 'aws-account-id', variable: 'AWS_ACCOUNT_ID')]) {
+          script { env.ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}" }
+          sh 'docker build --target runtime -t ${ECR_URI}:${IMAGE_TAG} -t ${ECR_URI}:latest .'
+        }
+      }
+    }
+
+    stage('Security Scan') {
+      steps {
+        script {
+          if (sh(returnStatus: true, script: 'command -v trivy >/dev/null') != 0) {
+            echo 'trivy not installed on this agent - skipping scan'
+          } else {
+            def code = params.FAIL_ON_VULNS ? 1 : 0
+            sh "trivy image --severity HIGH,CRITICAL --exit-code ${code} --no-progress ${env.ECR_URI}:${env.IMAGE_TAG}"
+          }
+        }
+      }
+    }
+
+    stage('Push to ECR') {
+      when { expression { params.DEPLOY } }
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins']]) {
+          sh '''
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${ECR_URI%%/*}
+            docker push ${ECR_URI}:${IMAGE_TAG}
+            docker push ${ECR_URI}:latest
+          '''
+        }
+      }
+    }
+
+    stage('Approve Production') {
+      when { allOf { expression { params.DEPLOY }; expression { params.ENVIRONMENT == 'production' } } }
+      steps { input message: "Deploy ${env.IMAGE_TAG} to PRODUCTION?", ok: 'Deploy' }
+    }
+
+    stage('Deploy') {
+      when { expression { params.DEPLOY } }
+      steps {
+        withCredentials([string(credentialsId: "deploy-host-${params.ENVIRONMENT}", variable: 'DEPLOY_HOST')]) {
+          sshagent(credentials: ['ec2-deploy-key']) {
+            sh '''
+              ssh -o StrictHostKeyChecking=accept-new ec2-user@${DEPLOY_HOST} \
+                "bash -s -- ${ECR_URI}:${IMAGE_TAG} ${AWS_REGION} ${DB_SECRET_ID} ${APP_SECRET_ID}" < scripts/deploy.sh
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Smoke Test') {
+      when { expression { params.DEPLOY } }
+      steps {
+        withCredentials([string(credentialsId: "deploy-host-${params.ENVIRONMENT}", variable: 'DEPLOY_HOST')]) {
+          sh 'curl -fsS --retry 5 --retry-delay 5 http://${DEPLOY_HOST}/health'
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker image prune -f || true'
+    }
+    success { echo "Build ${env.IMAGE_TAG} succeeded" }
+    failure { echo "Build ${env.IMAGE_TAG} FAILED - check the stage logs above" }
+  }
+}

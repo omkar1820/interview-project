@@ -1,0 +1,21 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your Interview</title><link rel="stylesheet" href="/static/style.css"></head><body>
+<header><h1>AI-Assisted First-Round Interview</h1></header>
+<main><div class="card"><p class="mut" id="status">Connecting…</p><div id="chat"></div>
+<textarea id="ans" rows="5" placeholder="Type your answer…" disabled></textarea><button id="send" disabled>Submit answer</button></div>
+<p class="mut">This interview is AI-assisted. Scores are decision support only; a human recruiter makes the final hiring decision.</p></main>
+<script>
+const q=new URLSearchParams(location.search),id=q.get("id"),token=q.get("token");
+const chat=document.getElementById("chat"),ans=document.getElementById("ans"),send=document.getElementById("send"),st=document.getElementById("status");
+const add=(t,c)=>{const d=document.createElement("div");d.className="msg "+c;d.textContent=t;chat.appendChild(d);d.scrollIntoView()};
+const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+`/ws/interview/${id}?token=${encodeURIComponent(token)}`);
+const lock=b=>{ans.disabled=send.disabled=b};
+ws.onmessage=e=>{const m=JSON.parse(e.data);
+ if(m.type==="welcome")st.textContent=`Hello ${m.name} — ${m.role} interview, ${m.total} questions`+(m.resumed_at?` (resuming after question ${m.resumed_at})`:"");
+ else if(m.type==="question"){add(`Q${m.index}/${m.total}: ${m.text}`,"bot");st.textContent=`Question ${m.index} of ${m.total}`;lock(false);ans.focus()}
+ else if(m.type==="evaluating")st.textContent="Processing your answer…";
+ else if(m.type==="error"){st.textContent=m.message;lock(false)}
+ else if(m.type==="complete"||m.type==="timeout"){add(m.message,"bot");st.textContent="Finished";lock(true)}};
+ws.onclose=()=>{if(send.disabled&&st.textContent!=="Finished")st.textContent="Disconnected — reload to resume."};
+send.onclick=()=>{const t=ans.value.trim();if(!t)return;add(t,"me");ws.send(JSON.stringify({type:"answer",text:t}));ans.value="";lock(true)};
+</script></body></html>

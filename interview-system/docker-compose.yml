@@ -1,0 +1,29 @@
+# Default: app talks to AWS RDS using values from .env
+#   docker compose up --build
+# Local dev with a throwaway MySQL container instead of RDS:
+#   docker compose --profile local-db up --build   (set DB_HOST=db, DB_SSL_CA= in .env)
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+    image: interview-eval-system:local
+    env_file: .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  db:
+    profiles: ["local-db"]
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-localpass}
+      MYSQL_DATABASE: ${DB_NAME:-interview_db}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
