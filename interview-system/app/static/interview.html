@@ -1,21 +1,68 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Your Interview</title><link rel="stylesheet" href="/static/style.css"></head><body>
+<title>Your Interview</title><link rel="stylesheet" href="/static/style.css">
+<style>
+[hidden]{display:none!important}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.tools button,.tools select{margin-top:0}.tools select{width:auto}
+#mic.on{background:#c8102e;color:#fff;border-color:#c8102e}
+#clock{margin-left:auto;font-weight:700;font-size:20px;font-variant-numeric:tabular-nums}#clock.low{color:#c8102e}
+.tbar{height:6px;background:#e5e7eb;border-radius:3px;margin-top:8px}.tbar i{display:block;height:6px;background:var(--navy);border-radius:3px;width:100%;transition:width 1s linear}
+label.inl{display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:15px;color:var(--ink)}label.inl input{width:auto}
+</style></head><body>
 <header><h1>AI-Assisted First-Round Interview</h1></header>
-<main><div class="card"><p class="mut" id="status">Connecting…</p><div id="chat"></div>
-<textarea id="ans" rows="5" placeholder="Type your answer…" disabled></textarea><button id="send" disabled>Submit answer</button></div>
+<main>
+<div class="card" id="start"><h2>Before you begin</h2>
+<p>You will get a set of questions, one at a time. Each answer has a time limit, and the timer starts after the question has been read out.</p>
+<label class="inl"><input type="checkbox" id="vm" checked> Voice mode: read questions aloud and answer with my microphone</label>
+<p class="mut" id="vnote">Your browser may ask to use your microphone. Speech is converted to text by your browser's speech service, and only the text of your answer is sent to this system. You can always edit or type your answer instead.</p>
+<button id="go">Start interview</button></div>
+<div class="card" id="room" hidden><p class="mut" id="status" role="status" aria-live="polite">Connecting…</p><div id="chat"></div>
+<div class="tbar"><i id="bar"></i></div>
+<textarea id="ans" rows="5" placeholder="Your answer appears here as you speak, or type it…" disabled></textarea>
+<div class="tools"><button id="mic" class="sec" disabled>🎤 Start speaking</button><button id="rep" class="sec" disabled>Repeat question</button>
+<select id="lang" aria-label="Answer language"><option value="en-IN">English (India)</option><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option><option value="hi-IN">Hindi</option><option value="mr-IN">Marathi</option></select>
+<span id="clock" aria-label="Time left">--:--</span></div>
+<button id="send" disabled>Submit answer</button></div>
 <p class="mut">This interview is AI-assisted. Scores are decision support only; a human recruiter makes the final hiring decision.</p></main>
 <script>
-const q=new URLSearchParams(location.search),id=q.get("id"),token=q.get("token");
-const chat=document.getElementById("chat"),ans=document.getElementById("ans"),send=document.getElementById("send"),st=document.getElementById("status");
+const Q=new URLSearchParams(location.search),id=Q.get("id"),token=Q.get("token"),LIMIT=+Q.get("limit")||120;
+const $=i=>document.getElementById(i),chat=$("chat"),ans=$("ans"),send=$("send"),st=$("status"),mic=$("mic"),rep=$("rep"),clock=$("clock"),bar=$("bar"),lang=$("lang");
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition,TTS="speechSynthesis" in window;
+let ws,rec,listening=false,base="",tick=null,left=0,curQ="",voice=true,finished=false,awaiting=false;
+if(!SR){$("vm").checked=false;$("vnote").textContent="Your browser does not support microphone answers (use Chrome or Edge for voice). You can still type your answers; questions can be read aloud.";}
 const add=(t,c)=>{const d=document.createElement("div");d.className="msg "+c;d.textContent=t;chat.appendChild(d);d.scrollIntoView()};
-const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+`/ws/interview/${id}?token=${encodeURIComponent(token)}`);
-const lock=b=>{ans.disabled=send.disabled=b};
-ws.onmessage=e=>{const m=JSON.parse(e.data);
- if(m.type==="welcome")st.textContent=`Hello ${m.name} — ${m.role} interview, ${m.total} questions`+(m.resumed_at?` (resuming after question ${m.resumed_at})`:"");
- else if(m.type==="question"){add(`Q${m.index}/${m.total}: ${m.text}`,"bot");st.textContent=`Question ${m.index} of ${m.total}`;lock(false);ans.focus()}
- else if(m.type==="evaluating")st.textContent="Processing your answer…";
- else if(m.type==="error"){st.textContent=m.message;lock(false)}
- else if(m.type==="complete"||m.type==="timeout"){add(m.message,"bot");st.textContent="Finished";lock(true)}};
-ws.onclose=()=>{if(send.disabled&&st.textContent!=="Finished")st.textContent="Disconnected — reload to resume."};
-send.onclick=()=>{const t=ans.value.trim();if(!t)return;add(t,"me");ws.send(JSON.stringify({type:"answer",text:t}));ans.value="";lock(true)};
+const lock=b=>{awaiting=!b;ans.disabled=send.disabled=rep.disabled=b;mic.disabled=b||!SR};
+const mmss=s=>String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+function setMic(on){mic.classList.toggle("on",on);mic.textContent=on?"⏹ Stop speaking":"🎤 Start speaking"}
+function stopClock(){clearInterval(tick);tick=null}
+function startClock(){stopClock();left=LIMIT;paint();tick=setInterval(()=>{left--;paint();if(left<=0){stopClock();submit(true)}},1000)}
+function paint(){clock.textContent=mmss(Math.max(left,0));clock.classList.toggle("low",left<=15);bar.style.width=Math.max(left,0)/LIMIT*100+"%"}
+function speak(text,cb){let done=false;const fin=()=>{if(!done){done=true;cb()}};
+ if(!TTS||!voice)return fin();
+ speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=lang.value;u.onend=u.onerror=fin;speechSynthesis.speak(u);
+ setTimeout(fin,Math.min(40000,text.length*90+4000))}
+function listen(){if(!SR||listening||!awaiting)return;
+ rec=new SR();rec.lang=lang.value;rec.continuous=true;rec.interimResults=true;base=ans.value?ans.value.trimEnd()+" ":"";
+ rec.onresult=e=>{let t="";for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;ans.value=base+t};
+ rec.onerror=e=>{if(e.error==="not-allowed"||e.error==="service-not-allowed"){stopListen();st.textContent="Microphone is blocked. Allow it in the address bar, or type your answer."}};
+ rec.onend=()=>{if(listening&&!finished&&awaiting){try{base=ans.value.trimEnd()+" ";rec.start()}catch(_){}}else{listening=false;setMic(false)}};
+ try{rec.start();listening=true;setMic(true)}catch(_){}}
+function stopListen(){listening=false;try{rec&&rec.stop()}catch(_){}setMic(false)}
+function submit(auto){if(!awaiting)return;let t=ans.value.trim();if(!t){if(!auto)return;t="(No answer given)"}
+ stopListen();if(TTS)speechSynthesis.cancel();stopClock();add(t,"me");ws.send(JSON.stringify({type:"answer",text:t}));ans.value="";lock(true)}
+function ask(m){curQ=m.text;add(`Q${m.index}/${m.total}: ${m.text}`,"bot");st.textContent=`Question ${m.index} of ${m.total}`;ans.value="";lock(false);clock.textContent="--:--";bar.style.width="100%";
+ speak(m.text,()=>{if(!awaiting||finished)return;startClock();ans.focus();if(voice)listen()})}
+function connect(){ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+`/ws/interview/${id}?token=${encodeURIComponent(token)}`);
+ ws.onmessage=e=>{const m=JSON.parse(e.data);
+  if(m.type==="welcome")st.textContent=`Hello ${m.name} — ${m.role} interview, ${m.total} questions`+(m.resumed_at?` (resuming after question ${m.resumed_at})`:"");
+  else if(m.type==="question")ask(m);
+  else if(m.type==="evaluating")st.textContent="Processing your answer…";
+  else if(m.type==="error"){st.textContent=m.message;lock(false)}
+  else if(m.type==="complete"||m.type==="timeout"){finished=true;stopListen();stopClock();add(m.message,"bot");st.textContent="Finished";lock(true);clock.textContent="--:--";speak(m.message,()=>{})}};
+ ws.onclose=()=>{if(!finished){stopListen();stopClock();st.textContent="Disconnected — reload this page to resume.";lock(true)}}}
+$("go").onclick=()=>{voice=$("vm").checked&&!!SR;$("start").hidden=true;$("room").hidden=false;if(TTS)speechSynthesis.cancel();connect()};
+mic.onclick=()=>listening?stopListen():listen();
+rep.onclick=()=>{stopListen();speak(curQ,()=>{if(voice)listen()})};
+send.onclick=()=>submit(false);
+window.addEventListener("beforeunload",()=>{if(TTS)speechSynthesis.cancel()});
 </script></body></html>
