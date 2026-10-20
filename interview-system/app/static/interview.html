@@ -7,6 +7,9 @@
 #mic.on{background:#c8102e;color:#fff;border-color:#c8102e}
 #clock{margin-left:auto;font-weight:700;font-size:20px;font-variant-numeric:tabular-nums}#clock.low{color:#c8102e}
 .tbar{height:6px;background:#e5e7eb;border-radius:3px;margin-top:8px}.tbar i{display:block;height:6px;background:var(--navy);border-radius:3px;width:100%;transition:width 1s linear}
+#src{font-family:Consolas,Menlo,monospace;font-size:14px;tab-size:4;white-space:pre}
+.res{border-top:1px solid #e5e7eb;padding:8px 0;font-size:14px}.res pre{background:#f3f4f6;padding:6px;border-radius:6px;overflow:auto;margin:4px 0}
+.ok{color:#0f6b50;font-weight:700}.bad{color:#c8102e;font-weight:700}
 label.inl{display:flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0;font-size:15px;color:var(--ink)}label.inl input{width:auto}
 </style></head><body>
 <header><h1>AI-Assisted First-Round Interview</h1></header>
@@ -23,6 +26,11 @@ label.inl{display:flex;gap:8px;align-items:center;text-transform:none;letter-spa
 <select id="lang" aria-label="Answer language"><option value="en-IN">English (India)</option><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option><option value="hi-IN">Hindi</option><option value="mr-IN">Marathi</option></select>
 <span id="clock" aria-label="Time left">--:--</span></div>
 <button id="send" disabled>Submit answer</button></div>
+<div class="card" id="code" hidden><h2 id="ctitle"></h2><p id="cstate" style="white-space:pre-wrap"></p><div id="csamples"></div>
+<p class="mut">Read from standard input and print to standard output. Run checks the sample tests; Submit runs all tests (hidden ones too) and can be done once.</p>
+<div class="tools"><select id="clang" aria-label="Programming language"><option value="python">Python</option><option value="javascript">JavaScript</option></select></div>
+<textarea id="src" rows="16" spellcheck="false" aria-label="Code editor"></textarea>
+<div class="tools"><button id="crun" class="sec">Run sample tests</button><button id="csub">Submit solution</button></div><div id="cres"></div></div>
 <p class="mut">This interview is AI-assisted. Scores are decision support only; a human recruiter makes the final hiring decision.</p></main>
 <script>
 const Q=new URLSearchParams(location.search),id=Q.get("id"),token=Q.get("token"),LIMIT=+Q.get("limit")||120;
@@ -58,8 +66,29 @@ function connect(){ws=new WebSocket((location.protocol==="https:"?"wss://":"ws:/
   else if(m.type==="question")ask(m);
   else if(m.type==="evaluating")st.textContent="Processing your answer…";
   else if(m.type==="error"){st.textContent=m.message;lock(false)}
-  else if(m.type==="complete"||m.type==="timeout"){finished=true;stopListen();stopClock();add(m.message,"bot");st.textContent="Finished";lock(true);clock.textContent="--:--";speak(m.message,()=>{})}};
+  else if(m.type==="complete"||m.type==="timeout"){if(m.type==="complete")loadCoding();finished=true;stopListen();stopClock();add(m.message,"bot");st.textContent="Finished";lock(true);clock.textContent="--:--";speak(m.message,()=>{})}};
  ws.onclose=()=>{if(!finished){stopListen();stopClock();st.textContent="Disconnected — reload this page to resume.";lock(true)}}}
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let CP=null;const cq=p=>`/api/interviews/${id}/coding${p}?token=${encodeURIComponent(token)}`;
+async function loadCoding(){try{const pi=await(await fetch(`/api/interviews/${id}/public?token=${encodeURIComponent(token)}`)).json();if(!pi.coding_enabled)return;
+ const r=await fetch(cq(""));if(!r.ok)return;const d=await r.json();CP=d.problem;$("code").hidden=false;
+ $("ctitle").textContent=`Coding exercise: ${CP.title} (${d.difficulty})`;$("cstate").textContent=CP.statement;
+ $("csamples").innerHTML=CP.samples.map((s,i)=>`<b>Sample ${i+1}</b> - input:<pre>${esc(s.input)}</pre>expected output:<pre>${esc(s.output)}</pre>`).join("");
+ if(d.submitted)return codeDone(`You already submitted your solution: ${d.result.passed} of ${d.result.total} tests passed.`);
+ $("src").value=CP.starters[$("clang").value];$("code").scrollIntoView({behavior:"smooth"})}catch(e){}}
+function codeDone(msg){$("src").disabled=$("crun").disabled=$("csub").disabled=$("clang").disabled=true;$("cres").innerHTML=`<p class="ok">${esc(msg)}</p>`}
+function paintRes(list){return list.map(r=>{const t=`Test ${r.index}`;if(r.visible===false)return `<div class="res">${t} (hidden): <span class="${r.passed?"ok":"bad"}">${r.passed?"PASSED":"FAILED"}</span></div>`;
+ const st={passed:"PASSED",wrong:"WRONG ANSWER",timeout:"TIMED OUT",error:"RUNTIME ERROR",skipped:"SKIPPED"}[r.status]||r.status;
+ return `<div class="res">${t}: <span class="${r.passed?"ok":"bad"}">${st}</span>`+(r.passed||r.status==="skipped"?"":`<pre>input: ${esc(r.input)}expected: ${esc(r.expected)}\ngot: ${esc(r.output)}${r.error?"\n"+esc(r.error):""}</pre>`)+"</div>"}).join("")}
+async function codeCall(kind){const src=$("src").value;if(!src.trim())return;$("crun").disabled=$("csub").disabled=true;$("cres").innerHTML='<p class="mut">Running…</p>';
+ try{const r=await fetch(cq("/"+kind),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({language:$("clang").value,code:src})}),d=await r.json();
+  if(!r.ok){$("cres").innerHTML=`<p class="bad">${esc(typeof d.detail==="string"?d.detail:"Check your code and try again")}</p>`;if(r.status!==409)$("crun").disabled=$("csub").disabled=false;return}
+  $("cres").innerHTML=`<p><b>${d.passed} of ${d.total} tests passed</b></p>`+paintRes(d.results)+(d.feedback?`<p class="mut">${esc(d.feedback)}</p>`:"");
+  if(kind==="submit")codeDone(`Submitted: ${d.passed} of ${d.total} tests passed. Thank you!`),$("cres").insertAdjacentHTML("beforeend",paintRes(d.results)+(d.feedback?`<p class="mut">${esc(d.feedback)}</p>`:""));
+  else $("crun").disabled=$("csub").disabled=false}catch(e){$("cres").innerHTML='<p class="bad">Network error - try again.</p>';$("crun").disabled=$("csub").disabled=false}}
+$("crun").onclick=()=>codeCall("run");$("csub").onclick=()=>{if(confirm("Submit your final solution? You can only submit once."))codeCall("submit")};
+$("clang").onchange=()=>{const s=$("src").value.trim();if(CP&&(!s||Object.values(CP.starters).some(x=>x.trim()===s)))$("src").value=CP.starters[$("clang").value]};
+$("src").addEventListener("keydown",e=>{if(e.key==="Tab"&&!e.shiftKey){e.preventDefault();const a=e.target,p=a.selectionStart;a.value=a.value.slice(0,p)+"    "+a.value.slice(a.selectionEnd);a.selectionStart=a.selectionEnd=p+4}});
 $("go").onclick=()=>{voice=$("vm").checked&&!!SR;$("start").hidden=true;$("room").hidden=false;if(TTS)speechSynthesis.cancel();connect()};
 mic.onclick=()=>listening?stopListen():listen();
 rep.onclick=()=>{stopListen();speak(curQ,()=>{if(voice)listen()})};
