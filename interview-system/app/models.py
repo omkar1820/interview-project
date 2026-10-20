@@ -2,7 +2,7 @@ import secrets
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -10,6 +10,31 @@ from .database import Base
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+class Agency(Base):
+    __tablename__ = "agencies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    max_recruiters: Mapped[int] = mapped_column(Integer, default=5)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    recruiters: Mapped[List["Recruiter"]] = relationship(back_populates="agency")
+
+
+class Recruiter(Base):
+    __tablename__ = "recruiters"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    agency_id: Mapped[int] = mapped_column(ForeignKey("agencies.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    email: Mapped[str] = mapped_column(String(190), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    agency: Mapped[Agency] = relationship(back_populates="recruiters")
 
 
 class Candidate(Base):
@@ -30,6 +55,8 @@ class Interview(Base):
     role: Mapped[str] = mapped_column(String(120))
     num_questions: Mapped[int] = mapped_column(Integer, default=5)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|in_progress|completed
+    recruiter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("recruiters.id"), nullable=True, index=True)
+    agency_id: Mapped[Optional[int]] = mapped_column(ForeignKey("agencies.id"), nullable=True, index=True)
     access_token: Mapped[str] = mapped_column(String(64), default=lambda: secrets.token_urlsafe(18))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Callable, TypeVar
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
@@ -54,12 +54,24 @@ def init_db(retries: int = 10, delay: float = 3.0) -> None:
     for attempt in range(1, retries + 1):
         try:
             Base.metadata.create_all(bind=engine)
+            _migrate()
             return
         except Exception as exc:  # RDS may still be warming up
             log.warning("DB not ready (%s/%s): %s", attempt, retries, exc)
             if attempt == retries:
                 raise
             time.sleep(delay)
+
+
+def _migrate() -> None:
+    """Idempotent, additive-only: new tables come from create_all; add new columns to existing tables."""
+    cols = {c["name"] for c in inspect(engine).get_columns("interviews")}
+    with engine.begin() as conn:
+        for col in ("recruiter_id", "agency_id"):
+            if col not in cols:
+                conn.execute(text(f"ALTER TABLE interviews ADD COLUMN {col} INTEGER NULL"))
+                conn.execute(text(f"CREATE INDEX ix_interviews_{col} ON interviews ({col})"))
+                log.info("Migrated: interviews.%s added", col)
 
 
 def db_ok() -> bool:

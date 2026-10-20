@@ -34,6 +34,8 @@ class InterviewSummary(BaseModel):
     overall_score: Optional[float] = None
     recommendation: Optional[str] = None
     recruiter_decision: Optional[str] = None
+    recruiter_name: Optional[str] = None
+    agency_name: Optional[str] = None
     created_at: datetime
 
 

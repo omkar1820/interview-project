@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .database import db_ok, init_db
-from .routers import api, ws
+from .routers import admin, api, ws
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 STATIC = Path(__file__).parent / "static"
@@ -21,6 +21,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Automated Candidate Interview & Evaluation System", version="1.0.0", lifespan=lifespan)
 app.include_router(api.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 app.include_router(ws.router)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 

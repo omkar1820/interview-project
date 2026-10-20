@@ -8,14 +8,6 @@ from app.main import app
 H = {"X-API-Key": "test-key"}
 
 
-@pytest.fixture(scope="module")
-def client():
-    with TestClient(app) as c:
-        yield c
-    if os.path.exists("test.db"):
-        os.remove("test.db")
-
-
 def test_health(client):
     assert client.get("/health").json()["database"] is True
 
