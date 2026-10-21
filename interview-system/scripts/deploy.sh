@@ -24,18 +24,23 @@ APP_JSON=$(aws secretsmanager get-secret-value --region "$REGION" --secret-id "$
 
 # --- Sandbox runner: executes candidate code. No network, no secrets, read-only fs, no capabilities ---
 RUNNER=interview-runner
-SOCK_DIR=/opt/runner-sock
-mkdir -p "$SOCK_DIR" && chmod 777 "$SOCK_DIR"
+SOCK_VOL=interview-runner-sock   # named volume: no host paths or sudo needed (image dir /run/runner is 777)
+docker volume create "$SOCK_VOL" >/dev/null
 docker rm -f "$RUNNER" >/dev/null 2>&1 || true
 docker run -d --name "$RUNNER" --restart unless-stopped --network none --read-only \
   --tmpfs /tmp:rw,nosuid,size=64m --cap-drop ALL --security-opt no-new-privileges \
   --pids-limit 128 --memory 512m --memory-swap 512m --cpus 1 --user 1002:1002 \
-  -v "$SOCK_DIR":/run/runner -e RUNNER_SOCKET=/run/runner/sock \
+  -v "$SOCK_VOL":/run/runner -e RUNNER_SOCKET=/run/runner/sock \
   "$IMAGE" python -m app.runner
+for i in $(seq 1 10); do
+  docker exec "$RUNNER" test -S /run/runner/sock 2>/dev/null && { echo "Runner ready"; break; }
+  [ "$i" = 10 ] && { echo "WARNING: code runner not ready - coding round disabled until fixed" >&2; docker logs --tail 20 "$RUNNER" >&2 || true; }
+  sleep 1
+done
 
 PREV_IMAGE=$(docker inspect -f '{{.Config.Image}}' "$NAME" 2>/dev/null || true)
 docker rm -f "$NAME" >/dev/null 2>&1 || true
-docker run -d --name "$NAME" --restart unless-stopped -p 80:8000 -v "$SOCK_DIR":/run/runner --env-file "$ENV_FILE" "$IMAGE"
+docker run -d --name "$NAME" --restart unless-stopped -p 80:8000 -v "$SOCK_VOL":/run/runner --env-file "$ENV_FILE" "$IMAGE"
 
 for i in $(seq 1 30); do
   if curl -fs http://localhost:80/health >/dev/null; then echo "Deployed $IMAGE - healthy"; exit 0; fi
@@ -46,7 +51,7 @@ echo "Health check failed - rolling back" >&2
 docker logs --tail 50 "$NAME" >&2 || true
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 if [ -n "$PREV_IMAGE" ]; then
-  docker run -d --name "$NAME" --restart unless-stopped -p 80:8000 -v "$SOCK_DIR":/run/runner --env-file "$ENV_FILE" "$PREV_IMAGE"
+  docker run -d --name "$NAME" --restart unless-stopped -p 80:8000 -v "$SOCK_VOL":/run/runner --env-file "$ENV_FILE" "$PREV_IMAGE"
   echo "Rolled back to $PREV_IMAGE" >&2
 fi
 exit 1

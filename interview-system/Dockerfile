@@ -19,7 +19,8 @@ RUN flake8 && pytest -q
 FROM base AS runtime
 RUN curl -fsSL -o /etc/ssl/certs/rds-global-bundle.pem \
       https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
-    && useradd -r -u 1001 appuser
+    && useradd -r -u 1001 appuser \
+    && mkdir -p /run/runner && chmod 777 /run/runner
 COPY app ./app
 USER appuser
 ENV DB_SSL_CA=/etc/ssl/certs/rds-global-bundle.pem
